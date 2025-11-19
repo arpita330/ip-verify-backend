@@ -4,9 +4,9 @@ import time, os, json
 app = Flask(__name__)
 
 DATA_FILE = "verify_data.json"
-SECRET_KEY = "4729"  # CHANGE THIS!
+SECRET_KEY = "secret123"   # change this
 
-# Load data storage
+# Load verification database
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {}
@@ -16,63 +16,91 @@ def load_data():
         except:
             return {}
 
-# Save storage
+# Save data
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
 
+@app.route("/")
+def home():
+    return "IP Verification Server Running"
+
+
+# --- MAIN VERIFICATION ROUTE (POST) ---
 @app.route("/report_ip", methods=["POST"])
 def report_ip():
-    try:
-        req = request.get_json(force=True)
-    except:
-        return jsonify({"success": False, "message": "Invalid JSON"}), 400
+    req = request.get_json(force=True)
 
     token = req.get("token")
     ip = req.get("ip")
-    user_id = req.get("user_id")  # must be sent from .bjs bot
+    user_id = req.get("user_id")
 
     if not token or not ip or not user_id:
-        return jsonify({
-            "success": False,
-            "message": "Missing fields (token, ip, user_id required)"
-        }), 400
+        return jsonify({"success": False, "message": "Missing fields"}), 400
 
     data = load_data()
 
-    # Unique key for rule 4:
-    # SAME TOKEN + SAME USER + SAME IP → Already Verified
     key = f"{user_id}:{token}:{ip}"
 
-    # Condition: Already verified
+    # Already verified
     if key in data:
         return jsonify({
             "success": True,
-            "already": True,
-            "message": "Previously verified"
+            "already": True
         }), 200
 
-    # Save new verification entry
+    # First verification
     data[key] = {
         "user_id": user_id,
         "token": token,
         "ip": ip,
         "verified_at": time.time()
     }
+    save_data(data)
 
+    return jsonify({
+        "success": True,
+        "already": False
+    }), 200
+
+
+# --- GET TEST ROUTE ---
+@app.route("/test", methods=["GET"])
+def test_verify():
+    token = request.args.get("token")
+    ip = request.args.get("ip")
+    user_id = request.args.get("user_id")
+
+    if not token or not ip or not user_id:
+        return jsonify({
+            "success": False,
+            "message": "Use: /test?token=123&ip=1.1.1.1&user_id=999"
+        }), 400
+
+    data = load_data()
+    key = f"{user_id}:{token}:{ip}"
+
+    if key in data:
+        return jsonify({
+            "success": True,
+            "already": True,
+            "message": "Already Verified"
+        }), 200
+
+    data[key] = {
+        "user_id": user_id,
+        "token": token,
+        "ip": ip,
+        "verified_at": time.time()
+    }
     save_data(data)
 
     return jsonify({
         "success": True,
         "already": False,
-        "message": "Verification completed"
+        "message": "Verification Successful"
     }), 200
-
-
-@app.route("/")
-def home():
-    return "IP Verification Server Running"
 
 
 if __name__ == "__main__":
